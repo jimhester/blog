@@ -5,7 +5,7 @@ tags: R
 comments: true
 ---
 
-An issue was opened https://github.com/r-lib/fs/issues/95 in the [fs]
+An issue was opened <https://github.com/r-lib/fs/issues/95> in the [fs]
 package describing an unexpected error code (`ENOENT` rather than `EEXIST`)
 when copying the same file to the same destination twice. Tracking down the
 cause of this turned out to be one of the weirdest bugs I have seen.
@@ -252,18 +252,18 @@ exactly the behavior we are seeing!
 We can then test this hypothesis by disabling logging for our R process and
 seeing if it fixes the bug.
 
-First get the R PID
+First we need to get the R PID
 ```r
 Sys.getpid()
 #> [1] 77310
 ```
 
-Then disable logging on the command line for that PID
-```c
+Then we can disable logging on the command line for that PID
+```shell
 sudo log config --process=77310 --mode 'level:off'
 ```
 
-Last run our test command
+Last we can run our test command
 
 ```r
 copyfile::copyfile()
@@ -277,7 +277,7 @@ So after this lengthy exploration this seems like a bug in either the
 `copyfile()` or `syslog()` implementations, and may possibly be
 fixed in newer versions of macOS than I am using (10.12.6 Sierra). This was
 truly one of the weirder bugs I have encountered, which is why I took the time
-to document it and I am still not entirely sure the exact cause, but we have
+to document it. I am still not entirely sure the exact cause, but we have
 enough evidence to show the likely culprit is the system logging.
 
 [fs]: https://fs.r-lib.org/

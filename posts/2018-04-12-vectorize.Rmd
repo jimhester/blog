@@ -167,7 +167,7 @@ environment(patient_name_v)$FUN
 
 ### Vectorize functions use `do.call()`, which can have unexpected performance consequences
 
-This is best explained by Hadley Wickham in http://rpubs.com/hadley/do-call2,
+This is best explained by Hadley Wickham in <http://rpubs.com/hadley/do-call2>,
 but the gist is `do.call()` ends up doing a lot more work than you might expect
 and in some cases has performance implications, although in this particular
 case they will be of minor concern. So because all functions generated with `Vectorize()` use `do.call()` they inherit these issues.

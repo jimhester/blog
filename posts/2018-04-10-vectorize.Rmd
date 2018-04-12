@@ -5,21 +5,27 @@ tags: R
 comments: true
 ---
 
+> I would first like to thank Dean Attali for writing the original post that
+inspired this one. Creating vectorized functions is definitely a common problem
+when dealing with vectors and creating functions in R and having public
+discourse on the best ways to do this is great for the whole community, thanks
+Dean!
+
 The [Vectorize] function is sometimes suggested as a solution to the problem of
-iterating over rows of a data frame, such as [How to use dplyr's mutate in R
-without a vectorized function][dean] by Dean Attali. This function at first seems a
-perfect solution to this problem (automatically turn any function in a
-vetorized one!). However like many things in life you may find it to be too
+iterating over elements of a vector, such as [How to use dplyr's mutate in R
+without a vectorized function][dean] by Dean Attali. This function at first
+seems a perfect solution to this problem (automatically turn any function in a
+vectorized one!). However like many things in life you may find it to be too
 good to be true.
 
-## Are you sure your function cannot already be vectorized?
+## Are you _sure_ your function cannot be vectorized?
 
 Many (most?) functions in base R and extension packages such as those in the
-[tidyverse] are vectorized over their arguments. To be vectorized means the
+[tidyverse] are vectorized over their primary arguments. To be vectorized means the
 function works not just on a single value, but on the whole vector of values at
 the same time.
 
-Some examples of vectorized functions are [+][plus] and [==](equality) and [i.na()][missing].
+Some examples of vectorized functions are [+][plus] and [==](equality) and [is.na()][missing].
 
 ```{r}
 1:3 + 1
@@ -39,8 +45,8 @@ name <- c("Sally", "Hank", "Darla")
 paste("A", color, object, "for", name)
 ```
 
-Often when people think they need to loop over rows their problem can actually
-be rewritten to work with the already vectorized functions in R.
+Often when people think they need to loop over elements their problem can
+actually be rewritten to work with the already vectorized functions in R.
 
 For instance Dean's example function to perform the following task.
 
@@ -57,7 +63,7 @@ patient_name <- function(path) {
 patient_name_v <- Vectorize(patient_name)
 ```
 
-At first it seems like this code would require you to iterate row by row to
+At first it seems like this code would require you to iterate element by element to
 have a vectorized form. However note the `unlist()` in the implementation.
 Often needing to `unlist()` is an indication that you are dealing with an already vectorized
 function. This is true in this case, `stringr::str_split()` is vectorized over
@@ -73,7 +79,7 @@ patient_name_better <- function(path) {
 ```
 
 This is an improvement, the code is easier to read and while we have a loop in
-the `vapply()` call, we are taking advantage of the vectorized `paste0`.
+the `vapply()` call, we are taking advantage of the vectorized `paste0()`.
 
 However in this case an even better alternative is available. R has vectorized
 functions [basename()][basename] and [dirname()][basename] to retrieve the
@@ -130,13 +136,14 @@ patient_name_v(character())
 patient_name_v(NULL)
 ```
 
-Type stability is also the reason it is best to avoid `sapply()` or `mapply()` in favor of the
-type stable `vapply()` or `purrr::map_*()` and `purrr::pmap_*()` functions.
+Type stability is also the reason it is best to avoid `sapply()` or `mapply()`
+in favor of the type stable `vapply()` or `purrr::map_*()` and
+`purrr::pmap_*()` functions.
 
-You can call `Vectorize(SIMPLIFY = TRUE)` when you generate the vectorized function, but this will
-cause the function to return a list of values rather than a vector. Because many vectorized
-functions do not work with list inputs, this often means you will then need
-to post-process your output.
+You can call `Vectorize(SIMPLIFY = FALSE)` when you generate the vectorized
+function, but this will cause the function to return a list of values rather
+than a vector. Because many vectorized functions do not work with list inputs,
+this often means you will then need to post-process your output.
 
 ### Vectorize does not generate functions with easily inspect-able code
 
@@ -147,7 +154,7 @@ have the same body when printed.
 patient_name_v
 ```
 
-This means you lose the easy inspecibility of functions. Being able to easily
+This means you lose the easy inspectibility of functions. Being able to easily
 see the implementation of functions in R is one of the strengths of the
 ecosystem. So losing this behavior makes your functions much more difficult for
 users (or yourself in the future) to understand. It _is_ possible to retrieve
@@ -178,8 +185,9 @@ repeatedly, so it cannot improve the running time.
 
 Because of these issues I think a cleaner solution is first, try to rewrite
 your function to take advantage of existing vectorized functions. If that is
-not possible define your original function in an internal helper, which
-then calls the equivalent type stable `map_()` or `vapply()` function on the internal function.
+not possible define your original function in an internal helper, which then
+calls the equivalent type stable `map_()` or `vapply()` function on the
+original function.
 
 ```{r}
 patient_name2 <- function(path) {
@@ -208,11 +216,6 @@ df %>% mutate(name = map_chr(path, patient_name))
 
 This is similarly concise to using `Vectorize()` but is also type stable for all possible
 inputs.
-
-I would like to thank Dean Attali for writing the original post that inspired
-this one. Creating vectorized functions is definitely a common problem and
-having public discourse on the best ways to do that is great for the whole
-community.
 
 [Vectorize]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/Vectorize
 [dean]: https://deanattali.com/blog/mutate-non-vectorized/

@@ -1,0 +1,364 @@
+---
+layout: post
+title: 'Beware of Vectorize'
+tags: R
+comments: true
+---
+
+> I would first like to thank Dean Attali for writing the original post that
+inspired this one. Creating vectorized functions is definitely a common problem
+when dealing with vectors and creating functions in R and having public
+discourse on the best ways to do this is great for the whole community, thanks
+Dean!
+
+The [Vectorize] function is sometimes suggested as a solution to the problem of
+iterating over elements of a vector, such as [How to use dplyr's mutate in R
+without a vectorized function][dean] by Dean Attali. This function at first
+seems a perfect solution to this problem (automatically turn any function in a
+vectorized one!). However like many things in life you may find it to be too
+good to be true.
+
+## Are you _sure_ your function cannot be vectorized?
+
+Many (most?) functions in base R and extension packages such as those in the
+[tidyverse] are vectorized over their primary arguments. To be vectorized means the
+function works not just on a single value, but on the whole vector of values at
+the same time.
+
+Some examples of vectorized functions are [+][plus] and [==](equality) and [is.na()][missing].
+
+
+{% highlight r %}
+1:3 + 1
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​[1] 2 3 4
+
+{% endhighlight %}
+
+
+
+{% highlight r %}
+1:2 == 2
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​[1] FALSE  TRUE
+
+{% endhighlight %}
+
+
+
+{% highlight r %}
+is.na(c(1, NA, 3))
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​[1] FALSE  TRUE FALSE
+
+{% endhighlight %}
+
+However even functions you may not first think are vectorized often are, such as [paste()][paste].
+
+
+{% highlight r %}
+color <- c("blue", "red", "green")
+object <- c("ball", "hat", "coat")
+name <- c("Sally", "Hank", "Darla")
+
+paste("A", color, object, "for", name)
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​[1] "A blue ball for Sally"  "A red hat for Hank"    
+[3] "A green coat for Darla"
+
+{% endhighlight %}
+
+Often when people think they need to loop over elements their problem can
+actually be rewritten to work with the already vectorized functions in R.
+
+For instance Dean's example function to perform the following task.
+
+> Given a path some/path/abc/001.txt, this function will return abc_001.txt
+
+
+{% highlight r %}
+library(tidyverse)
+patient_name <- function(path) {
+  path_list <- str_split(path, "/") %>% unlist()
+  paste(path_list[length(path_list) - 1], path_list[length(path_list)], sep = "_")
+}
+
+# Vectorize it with Vectorize
+patient_name_v <- Vectorize(patient_name)
+{% endhighlight %}
+
+At first it seems like this code would require you to iterate element by element to
+have a vectorized form. However note the `unlist()` in the implementation.
+Often needing to `unlist()` is an indication that you are dealing with an already vectorized
+function. This is true in this case, `stringr::str_split()` is vectorized over
+its inputs. Knowing this we can use `vapply()` with the `tail()` function to
+extract and then paste the rows.
+
+
+{% highlight r %}
+patient_name_better <- function(path) {
+  path_list <- str_split(path, "/")
+  last_two <- vapply(path_list, tail, character(2), 2)
+  paste0(last_two[1, ], "_", last_two[2, ])
+}
+{% endhighlight %}
+
+This is an improvement, the code is easier to read and while we have a loop in
+the `vapply()` call, we are taking advantage of the vectorized `paste0()`.
+
+However in this case an even better alternative is available. R has vectorized
+functions [basename()][basename] and [dirname()][basename] to retrieve the
+basename (filename) and directory name of a file path. So we can use these
+directly along with `paste()`.
+
+
+{% highlight r %}
+patient_name_best <- function(path) {
+  paste0(basename(dirname(path)), "_", basename(path))
+}
+{% endhighlight %}
+
+This gives us a very concise implementation and because all of these functions
+are implemented directly in C this is also very fast.
+
+
+{% highlight r %}
+# Construct 100 paths
+paths <- rep(c("some/path/abc/001.txt", "another/directory/xyz/002.txt"), 100)
+
+res <- microbenchmark::microbenchmark(
+  patient_name_v(paths),
+  patient_name_better(paths),
+  patient_name_best(paths)
+)
+
+bench <- summary(res)[c("expr", "median")]
+bench
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​                        expr    median
+1      patient_name_v(paths) 20078.813
+2 patient_name_better(paths)  2162.261
+3   patient_name_best(paths)   452.189
+
+{% endhighlight %}
+
+In this simple case the median runtime is 9x faster for the better version and
+44x faster for the best version!
+
+## But what if my problem really cannot use vectorized functions?
+
+There are cases where your code really cannot be rewritten in this way, so
+is `Vectorize()` a good solution in that case? I argue no it is not, for the
+following reasons.
+
+### Vectorize does not generate type stable functions.
+
+The function generated by `Vectorize` wraps the input function in a call to
+`mapply()` under the hood, with the default argument `SIMPLIFY = TRUE`. This
+means the type of the function output depends on the input. For example
+
+
+{% highlight r %}
+# Everything seems good, character vector output
+patient_name_v("some/path/abc/001.txt")
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​some/path/abc/001.txt 
+        "abc_001.txt" 
+
+{% endhighlight %}
+
+
+
+{% highlight r %}
+# But now my output is a named list()!
+patient_name_v(character())
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​named list()
+
+{% endhighlight %}
+
+
+
+{% highlight r %}
+# And now it is a list with no names!
+patient_name_v(NULL)
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​list()
+
+{% endhighlight %}
+
+Type stability is also the reason it is best to avoid `sapply()` or `mapply()`
+in favor of the type stable `vapply()` or `purrr::map_*()` and
+`purrr::pmap_*()` functions.
+
+You can call `Vectorize(SIMPLIFY = FALSE)` when you generate the vectorized
+function, but this will cause the function to return a list of values rather
+than a vector. Because many vectorized functions do not work with list inputs,
+this often means you will then need to post-process your output.
+
+### Vectorize does not generate functions with easily inspect-able code
+
+Because of the way `Vectorize()` generates the function all generated functions
+have the same body when printed.
+
+
+{% highlight r %}
+patient_name_v
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​function (path) 
+{
+    args <- lapply(as.list(match.call())[-1L], eval, parent.frame())
+    names <- if (is.null(names(args))) 
+        character(length(args))
+    else names(args)
+    dovec <- names %in% vectorize.args
+    do.call("mapply", c(FUN = FUN, args[dovec], MoreArgs = list(args[!dovec]), 
+        SIMPLIFY = SIMPLIFY, USE.NAMES = USE.NAMES))
+}
+<environment: 0x7fac1410e748>
+
+{% endhighlight %}
+
+This means you lose the easy inspectibility of functions. Being able to easily
+see the implementation of functions in R is one of the strengths of the
+ecosystem. So losing this behavior makes your functions much more difficult for
+users (or yourself in the future) to understand. It _is_ possible to retrieve
+the original function definition, but doing so requires you to examine how
+`Vectorize()` works; by storing the function in a variable called `FUN`.
+
+
+{% highlight r %}
+environment(patient_name_v)$FUN
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​function(path) {
+  path_list <- str_split(path, "/") %>% unlist()
+  paste(path_list[length(path_list) - 1], path_list[length(path_list)], sep = "_")
+}
+<environment: 0x7fac0cb73098>
+
+{% endhighlight %}
+
+### Vectorize functions use `do.call()`, which can have unexpected performance consequences
+
+This is best explained by Hadley Wickham in http://rpubs.com/hadley/do-call2,
+but the gist is `do.call()` ends up doing a lot more work than you might expect
+and in some cases has performance implications, although in this particular
+case they will be of minor concern. So because all functions generated with `Vectorize()` use `do.call()` they inherit these issues.
+
+### Vectorize does not actually make your code execute faster
+
+Perhaps the most important reason is that `Vectorize()` will not make your code
+faster. People often want to vectorize their function because they have observed that vectorized functions are fast. This is usually true,
+however it is true not because they are vectorized, but because vectorized
+functions are often written in C code (or call other functions which are).
+`Vectorize()` essentially just wraps your code in a loop and runs it
+repeatedly, so it cannot improve the running time.
+
+## So what should I do?
+
+Because of these issues I think a cleaner solution is first, try to rewrite
+your function to take advantage of existing vectorized functions. If that is
+not possible define your original function in an internal helper, which then
+calls the equivalent type stable `map_()` or `vapply()` function on the
+original function.
+
+
+{% highlight r %}
+patient_name2 <- function(path) {
+  patient_name_one <- function(path) {
+    path_list <- str_split(path, "/") %>% unlist()
+    paste(path_list[length(path_list) - 1], path_list[length(path_list)], sep = "_")
+  }
+  vapply(patient_name_one, path, character(1))
+}
+{% endhighlight %}
+
+This takes only a few more lines of code than the original and solves the
+majority of the issues with `Vectorize()`. The function is now type stable for
+all inputs, the function body remains inspectable and you avoid the potential
+pitfalls of using `do.call()`.
+
+In Dean's original case he was trying to use `patient_name` in a call to
+`dplyr::mutate()`. Rather than using `Vectorize()` to generate a new function
+in this case I would instead suggest an idiom like the following.
+
+
+{% highlight r %}
+df <- data_frame(path = paths)
+
+df %>% mutate(name = map_chr(path, patient_name))
+{% endhighlight %}
+
+
+
+{% highlight text %}
+​# A tibble: 200 x 2
+   path                          name       
+   <chr>                         <chr>      
+ 1 some/path/abc/001.txt         abc_001.txt
+ 2 another/directory/xyz/002.txt xyz_002.txt
+ 3 some/path/abc/001.txt         abc_001.txt
+ 4 another/directory/xyz/002.txt xyz_002.txt
+ 5 some/path/abc/001.txt         abc_001.txt
+ 6 another/directory/xyz/002.txt xyz_002.txt
+ 7 some/path/abc/001.txt         abc_001.txt
+ 8 another/directory/xyz/002.txt xyz_002.txt
+ 9 some/path/abc/001.txt         abc_001.txt
+10 another/directory/xyz/002.txt xyz_002.txt
+# ... with 190 more rows
+
+{% endhighlight %}
+
+This is similarly concise to using `Vectorize()` but is also type stable for all possible
+inputs.
+
+[Vectorize]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/Vectorize
+[dean]: https://deanattali.com/blog/mutate-non-vectorized/
+[basename]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/basename
+[dirname]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/basename
+[tidyverse]: https://www.tidyverse.org
+[paste]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/paste
+[plus]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/Arithmetic
+[equality]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/Comparison
+[sum]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/sum
+[missing]: https://www.rdocumentation.org/packages/base/versions/3.4.3/topics/NA

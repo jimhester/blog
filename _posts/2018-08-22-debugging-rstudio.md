@@ -19,15 +19,15 @@ be able to attach to the internal RStudio Rsession process.
 
 You can get the PID (process identifier) of any R process by calling `Sys.getpid()` from the
 R console. Then you can have the debugger attach to this PID with the `-p`
-argument to lldb. However if you do this with the current RStudio release
-(v1.1) however you get this!
+argument to lldb, e.g. `lldb -p 45323`. However if you do this with the current
+RStudio release (v1.1) you will get this!
 
 ![](http://lh3.googleusercontent.com/-IzfBppQwNQI/WAUEsgJwmnI/AAAAAAAAAXU/9aG6xKFRxY8/rstudio-bomb.png)
 
 I believe this occurs because of how RStudio detects if the R process
 is still running. When the debugger interrupts internal rsession process
 RStudio no longer thinks it has an active R session running, so shows the error
-bomb message.
+message.
 
 However you can work around this by using a feature of lldb I hadn't used until
 encountering this problem, `--waitfor`. This allows you to have lldb attach to
@@ -37,9 +37,9 @@ To do this first start lldb from a separate console (`lldb`). This will launch
 you into the lldb prompt. Then tell lldb you would like to attach to the
 rsession process using `--waitfor`.
 
-    process attach --name ression --waitfor
+    process attach --name rsession --waitfor
 
-lldb will then wait for this ression process to start. Now we can start up
+lldb will then wait for this rsession process to start. Now we can start up
 RStudio. The lldb session will then print something like the following
 
 ```

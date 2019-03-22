@@ -37,9 +37,9 @@ To do this first start lldb from a separate console (`lldb`). This will launch
 you into the lldb prompt. Then tell lldb you would like to attach to the
 rsession process using `--waitfor`.
 
-    process attach --name ression --waitfor
+    process attach --name rsession --waitfor
 
-lldb will then wait for this ression process to start. Now we can start up
+lldb will then wait for this rsession process to start. Now we can start up
 RStudio. The lldb session will then print something like the following
 
 ```
